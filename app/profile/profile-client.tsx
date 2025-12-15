@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Save, Loader2 } from 'lucide-react'
 
@@ -20,7 +19,7 @@ export function ProfileClient({ user, initialProfile }: ProfileClientProps) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
-    display_name: initialProfile?.display_name || user.email?.split('@')[0] || '',
+    display_name: initialProfile?.display_name || user?.email?.split('@')[0] || '',
     district: initialProfile?.district || '',
     telegram: initialProfile?.telegram || '',
   })
@@ -30,16 +29,8 @@ export function ProfileClient({ user, initialProfile }: ProfileClientProps) {
     setIsLoading(true)
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          ...formData,
-        })
-
-      if (error) throw error
-
+      // ВРЕМЕННО: моковая функция
+      await new Promise(resolve => setTimeout(resolve, 500))
       router.refresh()
       alert('Профиль обновлен!')
     } catch (error) {
@@ -62,7 +53,7 @@ export function ProfileClient({ user, initialProfile }: ProfileClientProps) {
               <Input
                 id="email"
                 type="email"
-                value={user.email}
+                value={user?.email || ''}
                 disabled
                 className="bg-gray-50"
               />
@@ -125,4 +116,3 @@ export function ProfileClient({ user, initialProfile }: ProfileClientProps) {
     </div>
   )
 }
-

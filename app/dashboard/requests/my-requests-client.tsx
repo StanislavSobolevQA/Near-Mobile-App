@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { closeRequest } from '@/app/actions/requests'
 import { Clock, MapPin, Trash2, CheckCircle } from 'lucide-react'
-import type { Request } from '@/lib/supabase/types'
+import type { Request } from '@/lib/types'
 import { useRouter } from 'next/navigation'
 
 function formatTimeAgo(date: string): string {

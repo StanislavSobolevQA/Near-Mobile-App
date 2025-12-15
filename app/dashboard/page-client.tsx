@@ -12,10 +12,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
-import { Plus, Search, Copy, MessageCircle, Clock, MapPin, Heart } from 'lucide-react'
-import { createRequest, createOffer, getRequestContact, closeRequest } from '@/app/actions/requests'
+import { Plus, Search, Clock, MapPin, Heart } from 'lucide-react'
+import { createRequest, createOffer } from '@/app/actions/requests'
 import { useRouter } from 'next/navigation'
-import type { Request } from '@/lib/supabase/types'
+import type { Request } from '@/lib/types'
 
 type Category = 'уборка' | 'ремонт' | 'доставка' | 'уход' | 'другое'
 type Urgency = 'today' | 'tomorrow' | 'week' | 'not-urgent'
@@ -55,9 +55,6 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
   const [activeTab, setActiveTab] = useState<'need' | 'offer'>('need')
   const [requests, setRequests] = useState<Request[]>(initialRequests)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [isResponseDialogOpen, setIsResponseDialogOpen] = useState(false)
-  const [selectedRequest, setSelectedRequest] = useState<Request | null>(null)
-  const [contactData, setContactData] = useState<{ contact_type: string; contact_value: string } | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingContact, setIsLoadingContact] = useState(false)
 
@@ -91,29 +88,33 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
     })
   }, [requests, selectedDistrict, categoryFilter, urgencyFilter, onlyPaid, searchQuery])
 
-  const handleCreateRequest = async () => {
+  const handleCreateRequest = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    
     if (!formData.category || !formData.title || !formData.description || !formData.contactValue) {
       return
     }
 
     setIsLoading(true)
     try {
-      const newRequest = await createRequest({
-        title: formData.title,
-        description: formData.description,
-        category: formData.category,
-        urgency: formData.urgency,
-        reward_type: formData.reward,
-        reward_amount: formData.reward === 'money' ? Number(formData.amount) : undefined,
-        district: selectedDistrict === 'Все районы' ? 'Центральный' : selectedDistrict,
-        contact_type: formData.contactType,
-        contact_value: formData.contactValue,
-      })
+      const formDataObj = new FormData()
+      formDataObj.append('title', formData.title)
+      formDataObj.append('description', formData.description)
+      formDataObj.append('category', formData.category)
+      formDataObj.append('urgency', formData.urgency)
+      formDataObj.append('reward_type', formData.reward)
+      if (formData.reward === 'money' && formData.amount) {
+        formDataObj.append('reward_amount', formData.amount)
+      }
+      formDataObj.append('district', selectedDistrict === 'Все районы' ? 'Центральный' : selectedDistrict)
+      formDataObj.append('contact_type', formData.contactType)
+      formDataObj.append('contact_value', formData.contactValue)
+
+      const newRequest = await createRequest(formDataObj)
 
       // Обновляем список и перенаправляем
       setRequests([newRequest as Request, ...requests])
       setIsCreateDialogOpen(false)
-      router.push(`/requests/${(newRequest as any).id}`)
       router.refresh()
       setFormData({
         category: '' as Category | '',
@@ -135,14 +136,9 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
   const handleRespond = async (request: Request) => {
     setIsLoadingContact(true)
     try {
-      // Сначала создаем отклик
       await createOffer(request.id)
-      
-      // Затем получаем контакт
-      const contact = await getRequestContact(request.id)
-      setContactData(contact)
-      setSelectedRequest(request)
-      setIsResponseDialogOpen(true)
+      router.refresh()
+      alert('Отклик успешно отправлен!')
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Ошибка при отклике')
     } finally {
@@ -150,17 +146,6 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
     }
   }
 
-  const handleCopyContact = () => {
-    if (contactData) {
-      navigator.clipboard.writeText(contactData.contact_value)
-    }
-  }
-
-  const handleOpenTelegram = () => {
-    if (contactData?.contact_type === 'telegram') {
-      window.open(`https://t.me/${contactData.contact_value.replace('@', '')}`, '_blank')
-    }
-  }
 
   const activeFiltersCount = [
     categoryFilter !== 'all',
@@ -334,6 +319,37 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
           <DialogHeader>
             <DialogTitle>Создать запрос</DialogTitle>
           </DialogHeader>
+          <form action={async (formData: FormData) => {
+            try {
+              const result = await createRequest(formData)
+              if (result) {
+                setRequests([result as Request, ...requests])
+                setIsCreateDialogOpen(false)
+                router.refresh()
+                setFormData({
+                  category: '' as Category | '',
+                  title: '',
+                  description: '',
+                  urgency: 'not-urgent',
+                  reward: 'thanks',
+                  amount: '',
+                  contactType: 'telegram',
+                  contactValue: '',
+                })
+              }
+            } catch (error) {
+              alert(error instanceof Error ? error.message : 'Ошибка при создании запроса')
+            }
+          }}>
+          <input type="hidden" name="title" value={formData.title} />
+          <input type="hidden" name="description" value={formData.description} />
+          <input type="hidden" name="category" value={formData.category} />
+          <input type="hidden" name="urgency" value={formData.urgency} />
+          <input type="hidden" name="reward_type" value={formData.reward} />
+          <input type="hidden" name="reward_amount" value={formData.reward === 'money' ? formData.amount : ''} />
+          <input type="hidden" name="district" value={selectedDistrict === 'Все районы' ? 'Центральный' : selectedDistrict} />
+          <input type="hidden" name="contact_type" value={formData.contactType} />
+          <input type="hidden" name="contact_value" value={formData.contactValue} />
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Категория *</Label>
@@ -438,49 +454,17 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
               Отмена
             </Button>
             <Button 
-              onClick={handleCreateRequest} 
+              type="submit"
               disabled={isLoading}
               className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg hover:shadow-xl transition-all text-white"
             >
               {isLoading ? 'Создание...' : 'Опубликовать'}
             </Button>
           </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
-      {/* Модалка отклика */}
-      <Dialog open={isResponseDialogOpen} onOpenChange={setIsResponseDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Отклик на запрос</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-gray-700 mb-4">
-              Вы откликнулись на запрос. Контактные данные:
-            </p>
-            {contactData && (
-              <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                <div className="font-semibold mb-2">
-                  {contactData.contact_type === 'telegram' ? 'Telegram' : 'Телефон'}:
-                </div>
-                <div className="text-lg">{contactData.contact_value}</div>
-              </div>
-            )}
-          </div>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={handleCopyContact} className="w-full sm:w-auto">
-              <Copy className="h-4 w-4 mr-2" />
-              Скопировать контакт
-            </Button>
-            {contactData?.contact_type === 'telegram' && (
-              <Button onClick={handleOpenTelegram} className="w-full sm:w-auto">
-                <MessageCircle className="h-4 w-4 mr-2" />
-                Открыть Telegram
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-        </Dialog>
     </div>
   )
 }

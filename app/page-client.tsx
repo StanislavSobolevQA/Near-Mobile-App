@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { MockMap } from '@/components/mock-map'
 import { Search, MapPin, Clock, Heart, ArrowRight, Users, Shield, Zap } from 'lucide-react'
 import Link from 'next/link'
-import type { Request } from '@/lib/supabase/types'
+import type { Request } from '@/lib/types'
 
 interface HomeClientProps {
   initialRequests: Request[]

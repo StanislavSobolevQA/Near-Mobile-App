@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { createOffer, getRequestContact, closeRequest } from '@/app/actions/requests'
 import { Clock, MapPin, User, CheckCircle, MessageCircle, Copy } from 'lucide-react'
-import type { Request } from '@/lib/supabase/types'
+import type { Request } from '@/lib/types'
 
 function formatTimeAgo(date: string): string {
   const now = new Date()

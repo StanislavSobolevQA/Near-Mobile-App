@@ -8,12 +8,9 @@ export default async function DashboardPage() {
   // Загружаем запросы
   let requests = []
   try {
-    requests = await getRequests({
-      status: 'open',
-    })
+    requests = await getRequests()
   } catch (error) {
-    // ВРЕМЕННО: игнорируем ошибки загрузки (база данных может быть не настроена)
-    console.error('Error loading requests (ignored):', error)
+    console.error('Error loading requests:', error)
     requests = []
   }
 
