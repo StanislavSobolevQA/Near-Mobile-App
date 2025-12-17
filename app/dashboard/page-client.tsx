@@ -90,27 +90,25 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
 
   const handleCreateRequest = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    
+
     if (!formData.category || !formData.title || !formData.description || !formData.contactValue) {
+      alert('Заполните все обязательные поля')
       return
     }
 
     setIsLoading(true)
     try {
-      const formDataObj = new FormData()
-      formDataObj.append('title', formData.title)
-      formDataObj.append('description', formData.description)
-      formDataObj.append('category', formData.category)
-      formDataObj.append('urgency', formData.urgency)
-      formDataObj.append('reward_type', formData.reward)
-      if (formData.reward === 'money' && formData.amount) {
-        formDataObj.append('reward_amount', formData.amount)
-      }
-      formDataObj.append('district', selectedDistrict === 'Все районы' ? 'Центральный' : selectedDistrict)
-      formDataObj.append('contact_type', formData.contactType)
-      formDataObj.append('contact_value', formData.contactValue)
-
-      const newRequest = await createRequest(formDataObj)
+      const newRequest = await createRequest({
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+        urgency: formData.urgency,
+        reward_type: formData.reward,
+        reward_amount: formData.reward === 'money' ? Number(formData.amount) : null,
+        district: selectedDistrict === 'Все районы' ? 'Центральный' : selectedDistrict,
+        contact_type: formData.contactType,
+        contact_value: formData.contactValue,
+      })
 
       // Обновляем список и перенаправляем
       setRequests([newRequest as Request, ...requests])
@@ -156,7 +154,7 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar 
+      <Navbar
         selectedDistrict={selectedDistrict}
         onDistrictChange={setSelectedDistrict}
         onCreateRequest={() => setIsCreateDialogOpen(true)}
@@ -209,8 +207,8 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
                 <div className="space-y-2">
                   <Label>Вознаграждение</Label>
                   <div className="flex items-center space-x-2 h-10 px-3 border rounded-md">
-                    <Checkbox 
-                      id="only-paid" 
+                    <Checkbox
+                      id="only-paid"
                       checked={onlyPaid}
                       onCheckedChange={(checked) => setOnlyPaid(checked as boolean)}
                     />
@@ -243,7 +241,7 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
                 <Heart className="h-16 w-16 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">Нет результатов</h3>
                 <p className="text-gray-600 mb-6">Попробуйте изменить фильтры или создайте свой запрос</p>
-                <Button 
+                <Button
                   onClick={() => setIsCreateDialogOpen(true)}
                   className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg hover:shadow-xl transition-all text-white"
                 >
@@ -264,14 +262,14 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
                         </a>
                         <div className="flex flex-wrap gap-2 mb-3">
                           <Badge variant="outline">{request.category}</Badge>
-                          <Badge 
+                          <Badge
                             variant={request.urgency === 'today' ? 'destructive' : 'secondary'}
                           >
                             {urgencyLabels[request.urgency as Urgency]}
                           </Badge>
                           <Badge variant="default">
-                            {request.reward_type === 'money' 
-                              ? `${request.reward_amount} ₽` 
+                            {request.reward_type === 'money'
+                              ? `${request.reward_amount} ₽`
                               : 'Спасибо'}
                           </Badge>
                           {request.status !== 'open' && (
@@ -295,8 +293,8 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
                     <p className="text-gray-700 mb-4">{request.description}</p>
                     <div className="flex gap-2">
                       {request.status === 'open' && (
-                        <Button 
-                          onClick={() => handleRespond(request)} 
+                        <Button
+                          onClick={() => handleRespond(request)}
                           className="w-full md:w-auto bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-md hover:shadow-lg transition-all text-white"
                           disabled={isLoadingContact}
                         >
@@ -319,148 +317,118 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
           <DialogHeader>
             <DialogTitle>Создать запрос</DialogTitle>
           </DialogHeader>
-          <form action={async (formData: FormData) => {
-            try {
-              const result = await createRequest(formData)
-              if (result) {
-                setRequests([result as Request, ...requests])
-                setIsCreateDialogOpen(false)
-                router.refresh()
-                setFormData({
-                  category: '' as Category | '',
-                  title: '',
-                  description: '',
-                  urgency: 'not-urgent',
-                  reward: 'thanks',
-                  amount: '',
-                  contactType: 'telegram',
-                  contactValue: '',
-                })
-              }
-            } catch (error) {
-              alert(error instanceof Error ? error.message : 'Ошибка при создании запроса')
-            }
-          }}>
-          <input type="hidden" name="title" value={formData.title} />
-          <input type="hidden" name="description" value={formData.description} />
-          <input type="hidden" name="category" value={formData.category} />
-          <input type="hidden" name="urgency" value={formData.urgency} />
-          <input type="hidden" name="reward_type" value={formData.reward} />
-          <input type="hidden" name="reward_amount" value={formData.reward === 'money' ? formData.amount : ''} />
-          <input type="hidden" name="district" value={selectedDistrict === 'Все районы' ? 'Центральный' : selectedDistrict} />
-          <input type="hidden" name="contact_type" value={formData.contactType} />
-          <input type="hidden" name="contact_value" value={formData.contactValue} />
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Категория *</Label>
-              <Select 
-                value={formData.category} 
-                onValueChange={(v) => setFormData({ ...formData, category: v as Category })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите категорию" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map(cat => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Заголовок *</Label>
-              <Input
-                placeholder="Краткое описание задачи"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Описание *</Label>
-              <Textarea
-                placeholder="Подробное описание задачи"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={4}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Когда нужно *</Label>
-              <Select 
-                value={formData.urgency} 
-                onValueChange={(v) => setFormData({ ...formData, urgency: v as Urgency })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(urgencyLabels).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Вознаграждение *</Label>
-              <RadioGroup 
-                value={formData.reward} 
-                onValueChange={(v) => setFormData({ ...formData, reward: v as RewardType, amount: '' })}
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="thanks" id="thanks" />
-                  <Label htmlFor="thanks" className="cursor-pointer">Спасибо</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="money" id="money" />
-                  <Label htmlFor="money" className="cursor-pointer">₽</Label>
-                </div>
-              </RadioGroup>
-              {formData.reward === 'money' && (
-                <Input
-                  type="number"
-                  placeholder="Сумма"
-                  value={formData.amount}
-                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                  className="mt-2"
-                />
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Контакт *</Label>
-              <div className="flex gap-2">
-                <Select 
-                  value={formData.contactType} 
-                  onValueChange={(v) => setFormData({ ...formData, contactType: v as ContactType })}
+          <form onSubmit={handleCreateRequest}>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Категория *</Label>
+                <Select
+                  value={formData.category}
+                  onValueChange={(v) => setFormData({ ...formData, category: v as Category })}
                 >
-                  <SelectTrigger className="w-[140px]">
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите категорию" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map(cat => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Заголовок *</Label>
+                <Input
+                  placeholder="Краткое описание задачи"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Описание *</Label>
+                <Textarea
+                  placeholder="Подробное описание задачи"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  rows={4}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Когда нужно *</Label>
+                <Select
+                  value={formData.urgency}
+                  onValueChange={(v) => setFormData({ ...formData, urgency: v as Urgency })}
+                >
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="telegram">Telegram</SelectItem>
-                    <SelectItem value="phone">Телефон</SelectItem>
+                    {Object.entries(urgencyLabels).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
-                <Input
-                  placeholder={formData.contactType === 'telegram' ? '@username' : '+7 999 123-45-67'}
-                  value={formData.contactValue}
-                  onChange={(e) => setFormData({ ...formData, contactValue: e.target.value })}
-                  className="flex-1"
-                />
+              </div>
+              <div className="space-y-2">
+                <Label>Вознаграждение *</Label>
+                <RadioGroup
+                  value={formData.reward}
+                  onValueChange={(v) => setFormData({ ...formData, reward: v as RewardType, amount: '' })}
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="thanks" id="thanks" />
+                    <Label htmlFor="thanks" className="cursor-pointer">Спасибо</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="money" id="money" />
+                    <Label htmlFor="money" className="cursor-pointer">₽</Label>
+                  </div>
+                </RadioGroup>
+                {formData.reward === 'money' && (
+                  <Input
+                    type="number"
+                    placeholder="Сумма"
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    className="mt-2"
+                  />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Контакт *</Label>
+                <div className="flex gap-2">
+                  <Select
+                    value={formData.contactType}
+                    onValueChange={(v) => setFormData({ ...formData, contactType: v as ContactType })}
+                  >
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="telegram">Telegram</SelectItem>
+                      <SelectItem value="phone">Телефон</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder={formData.contactType === 'telegram' ? '@username' : '+7 999 123-45-67'}
+                    value={formData.contactValue}
+                    onChange={(e) => setFormData({ ...formData, contactValue: e.target.value })}
+                    className="flex-1"
+                  />
+                </div>
               </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-              Отмена
-            </Button>
-            <Button 
-              type="submit"
-              disabled={isLoading}
-              className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg hover:shadow-xl transition-all text-white"
-            >
-              {isLoading ? 'Создание...' : 'Опубликовать'}
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                Отмена
+              </Button>
+              <Button
+                type="submit"
+                disabled={isLoading}
+                className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg hover:shadow-xl transition-all text-white"
+              >
+                {isLoading ? 'Создание...' : 'Опубликовать'}
+              </Button>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

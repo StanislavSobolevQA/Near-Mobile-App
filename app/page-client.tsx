@@ -10,8 +10,11 @@ import { Search, MapPin, Clock, Heart, ArrowRight, Users, Shield, Zap } from 'lu
 import Link from 'next/link'
 import type { Request } from '@/lib/types'
 
+import { User } from '@supabase/supabase-js'
+
 interface HomeClientProps {
   initialRequests: Request[]
+  user: User | null
 }
 
 const districts = ['Все районы', 'Центральный', 'Северный', 'Южный', 'Восточный', 'Западный']
@@ -30,7 +33,7 @@ function formatTimeAgo(date: string): string {
   return `${diffDays} дн назад`
 }
 
-export function HomeClient({ initialRequests }: HomeClientProps) {
+export function HomeClient({ initialRequests, user }: HomeClientProps) {
   const [selectedDistrict, setSelectedDistrict] = useState('Все районы')
   const [selectedCategory, setSelectedCategory] = useState('Все категории')
   const [searchQuery, setSearchQuery] = useState('')
@@ -48,7 +51,7 @@ export function HomeClient({ initialRequests }: HomeClientProps) {
     }
 
     if (searchQuery) {
-      filtered = filtered.filter(req => 
+      filtered = filtered.filter(req =>
         req.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         req.description.toLowerCase().includes(searchQuery.toLowerCase())
       )
@@ -56,6 +59,8 @@ export function HomeClient({ initialRequests }: HomeClientProps) {
 
     setFilteredRequests(filtered)
   }, [selectedDistrict, selectedCategory, searchQuery, initialRequests])
+
+  // ... existing code ...
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -67,12 +72,20 @@ export function HomeClient({ initialRequests }: HomeClientProps) {
               Рядом
             </h1>
             <div className="flex items-center gap-3">
-              <Button variant="ghost" asChild className="hover:bg-gray-100/80">
-                <Link href="/dashboard">Войти</Link>
-              </Button>
-              <Button asChild className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg hover:shadow-xl transition-all">
-                <Link href="/dashboard">Регистрация</Link>
-              </Button>
+              {user ? (
+                <Button asChild className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg hover:shadow-xl transition-all">
+                  <Link href="/dashboard">Личный кабинет</Link>
+                </Button>
+              ) : (
+                <>
+                  <Button variant="ghost" asChild className="hover:bg-gray-100/80">
+                    <Link href="/login">Войти</Link>
+                  </Button>
+                  <Button asChild className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg hover:shadow-xl transition-all">
+                    <Link href="/login">Регистрация</Link>
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -83,30 +96,30 @@ export function HomeClient({ initialRequests }: HomeClientProps) {
         {/* Декоративные элементы */}
         <div className="absolute top-0 left-0 w-72 h-72 bg-primary/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
         <div className="absolute bottom-0 right-0 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
-        
+
         <div className="container mx-auto px-4 relative z-10">
           <div className="max-w-4xl mx-auto text-center animate-fade-in">
             <h2 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 bg-clip-text text-transparent leading-tight">
               Сервис срочных поручений
             </h2>
             <p className="text-xl md:text-2xl text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-              Находите исполнителей для срочных поручений или предлагайте свои услуги. 
+              Находите исполнителей для срочных поручений или предлагайте свои услуги.
               <span className="font-semibold text-gray-700"> Быстро, безопасно, удобно.</span>
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center animate-slide-up">
-              <Button 
-                size="lg" 
-                asChild 
+              <Button
+                size="lg"
+                asChild
                 className="text-lg px-8 py-6 bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-xl hover:shadow-2xl transition-all transform hover:scale-105"
               >
                 <Link href="/dashboard">
                   Создать поручение
                 </Link>
               </Button>
-              <Button 
-                size="lg" 
-                variant="outline" 
-                asChild 
+              <Button
+                size="lg"
+                variant="outline"
+                asChild
                 className="text-lg px-8 py-6 border-2 border-gray-300 hover:border-primary hover:bg-primary/5 hover:text-primary transition-all group relative overflow-hidden"
               >
                 <Link href="#map" className="flex items-center gap-2">
@@ -168,8 +181,8 @@ export function HomeClient({ initialRequests }: HomeClientProps) {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredRequests.slice(0, 6).map((request, index) => (
-                <div 
-                  key={request.id} 
+                <div
+                  key={request.id}
                   className="bg-white rounded-xl border border-gray-200/50 p-6 card-hover group relative overflow-hidden shadow-sm hover:shadow-xl"
                   style={{ animationDelay: `${index * 100}ms` }}
                 >
@@ -180,27 +193,26 @@ export function HomeClient({ initialRequests }: HomeClientProps) {
                       </h4>
                     </a>
                   </div>
-                  
+
                   <div className="flex flex-wrap gap-2 mb-4">
                     <Badge variant="outline" className="bg-gray-50 hover:bg-gray-100 transition-colors">
                       {request.category}
                     </Badge>
-                    <Badge 
-                      variant="secondary" 
-                      className={`${
-                        request.reward_type === 'money' 
-                          ? 'bg-green-50 text-green-700 border-green-200' 
-                          : 'bg-blue-50 text-blue-700 border-blue-200'
-                      } font-semibold`}
+                    <Badge
+                      variant="secondary"
+                      className={`${request.reward_type === 'money'
+                        ? 'bg-green-50 text-green-700 border-green-200'
+                        : 'bg-blue-50 text-blue-700 border-blue-200'
+                        } font-semibold`}
                     >
                       {request.reward_type === 'money' ? `💰 ${request.reward_amount} ₽` : '🙏 Спасибо'}
                     </Badge>
                   </div>
-                  
+
                   <p className="text-gray-600 text-sm mb-5 line-clamp-2 leading-relaxed">
                     {request.description}
                   </p>
-                  
+
                   <div className="flex items-center gap-4 text-xs text-gray-500 mb-5 pb-4 border-b border-gray-100">
                     <div className="flex items-center gap-1.5">
                       <MapPin className="h-3.5 w-3.5 text-primary" />
@@ -211,7 +223,7 @@ export function HomeClient({ initialRequests }: HomeClientProps) {
                       <span>{formatTimeAgo(request.created_at)}</span>
                     </div>
                   </div>
-                  
+
                   <Button variant="outline" className="w-full border-2 hover:border-primary hover:bg-primary hover:text-white transition-all font-medium group/btn" asChild>
                     <Link href={`/requests/${request.id}`} className="flex items-center justify-center gap-2">
                       Подробнее
@@ -319,9 +331,9 @@ export function HomeClient({ initialRequests }: HomeClientProps) {
             <p className="text-xl md:text-2xl mb-10 opacity-95 leading-relaxed">
               Присоединяйтесь к сервису и начните выполнять поручения уже сегодня
             </p>
-            <Button 
-              size="lg" 
-              variant="secondary" 
+            <Button
+              size="lg"
+              variant="secondary"
               asChild
               className="text-lg px-10 py-7 bg-white text-primary hover:bg-gray-100 shadow-2xl hover:shadow-3xl transform hover:scale-105 transition-all font-bold"
             >

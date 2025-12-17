@@ -1,10 +1,17 @@
 import { getRequests } from '@/app/actions/requests'
 import { DashboardClient } from './page-client'
-import { Navbar } from '@/components/navbar'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 
 export default async function DashboardPage() {
-  // ВРЕМЕННО: убрана проверка авторизации
-  
+  const supabase = createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect('/login')
+  }
+
   // Загружаем запросы
   let requests = []
   try {
@@ -15,9 +22,9 @@ export default async function DashboardPage() {
   }
 
   return (
-    <DashboardClient 
+    <DashboardClient
       initialRequests={requests as any}
-      userDistrict={undefined}
+      userDistrict={undefined} // TODO: Load from profile
     />
   )
 }
