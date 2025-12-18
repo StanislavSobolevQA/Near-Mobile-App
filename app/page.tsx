@@ -1,4 +1,5 @@
 import { getRequests } from '@/app/actions/requests'
+import { sanitizeRequests } from '@/lib/utils'
 import { HomeClient } from './page-client'
 import { createClient } from '@/lib/supabase/server'
 
@@ -9,7 +10,9 @@ export default async function HomePage() {
   // Загружаем открытые запросы для главной страницы
   try {
     const requests = await getRequests()
-    return <HomeClient initialRequests={requests as any} user={user} />
+    // Удаляем contact_value для безопасности (не передаем в клиентский компонент)
+    const safeRequests = sanitizeRequests(requests)
+    return <HomeClient initialRequests={safeRequests} user={user} />
   } catch (error) {
     console.error('Error loading requests:', error)
     // Возвращаем пустой массив если ошибка (таблицы еще не созданы)

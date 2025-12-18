@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Plus, Search, Clock, MapPin, Heart } from 'lucide-react'
 import { createRequest, createOffer } from '@/app/actions/requests'
 import { useRouter } from 'next/navigation'
-import type { Request } from '@/lib/types'
+import type { SafeRequest } from '@/lib/types'
 
 type Category = 'уборка' | 'ремонт' | 'доставка' | 'уход' | 'другое'
 type Urgency = 'today' | 'tomorrow' | 'week' | 'not-urgent'
@@ -45,7 +45,7 @@ function formatTimeAgo(date: string): string {
 }
 
 interface DashboardClientProps {
-  initialRequests: Request[]
+  initialRequests: SafeRequest[]
   userDistrict?: string
 }
 
@@ -53,7 +53,7 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
   const router = useRouter()
   const [selectedDistrict, setSelectedDistrict] = useState(userDistrict || 'Все районы')
   const [activeTab, setActiveTab] = useState<'need' | 'offer'>('need')
-  const [requests, setRequests] = useState<Request[]>(initialRequests)
+  const [requests, setRequests] = useState<SafeRequest[]>(initialRequests)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingContact, setIsLoadingContact] = useState(false)
@@ -111,7 +111,9 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
       })
 
       // Обновляем список и перенаправляем
-      setRequests([newRequest as Request, ...requests])
+      // Удаляем contact_value для безопасности перед добавлением в состояние
+      const { contact_value, ...safeRequest } = newRequest as any
+      setRequests([safeRequest as SafeRequest, ...requests])
       setIsCreateDialogOpen(false)
       router.refresh()
       setFormData({
@@ -131,7 +133,7 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
     }
   }
 
-  const handleRespond = async (request: Request) => {
+  const handleRespond = async (request: SafeRequest) => {
     setIsLoadingContact(true)
     try {
       await createOffer(request.id)

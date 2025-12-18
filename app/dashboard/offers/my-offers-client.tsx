@@ -34,7 +34,11 @@ export function MyOffersClient({ initialOffers }: MyOffersClientProps) {
     setLoadingContact(requestId)
     try {
       const contact = await getRequestContact(requestId)
-      setContacts({ ...contacts, [requestId]: contact })
+      if (contact) {
+        setContacts((prev) => ({ ...prev, [requestId]: contact as { contact_type: string; contact_value: string } }))
+      } else {
+        throw new Error('Contact not found')
+      }
     } catch (error) {
       alert('Не удалось получить контакт. Убедитесь, что вы откликнулись на запрос.')
     } finally {

@@ -73,31 +73,67 @@ export function ProfileClient({ user, initialProfile }: ProfileClientProps) {
     setIsLoading(true)
 
     try {
-      // Обновляем профиль в БД
-      // Предполагаем, что есть таблица profiles или логика обновления юзера
-      // Так как user - это объект auth, мы скорее всего обновляем метаданные или отдельную таблицу
+      if (!user?.id) {
+        throw new Error('Пользователь не авторизован')
+      }
 
-      // ВРЕМЕННО: имитация сохранения, так как схемы БД полной нет в контексте,
-      // но добавим логику, если бы она была реальной через RPC или update
+      // Подготавливаем данные для сохранения (без avatar_url, так как его может не быть в схеме)
+      const profileData: {
+        id: string
+        display_name: string | null
+        district: string | null
+        telegram: string | null
+      } = {
+        id: user.id,
+        display_name: formData.display_name || null,
+        district: formData.district || null,
+        telegram: formData.telegram || null,
+      }
 
-      // const { error } = await supabase
-      //   .from('profiles')
-      //   .upsert({
-      //     id: user?.id,
-      //     ...formData,
-      //     updated_at: new Date().toISOString(),
-      //   })
+      // Сначала проверяем, существует ли профиль
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .single()
 
-      // if (error) throw error
+      let result
+      if (existingProfile) {
+        // Обновляем существующий профиль
+        result = await supabase
+          .from('profiles')
+          .update(profileData)
+          .eq('id', user.id)
+          .select()
+      } else {
+        // Создаем новый профиль
+        result = await supabase
+          .from('profiles')
+          .insert(profileData)
+          .select()
+      }
 
-      await new Promise(resolve => setTimeout(resolve, 800)) // Красивая задержка
+      const { data, error } = result
 
+      if (error) {
+        console.error('Supabase error details:', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint
+        })
+        throw new Error(`Ошибка при обновлении профиля: ${error.message}${error.code ? ` (код: ${error.code})` : ''}`)
+      }
+
+      console.log('Profile updated successfully:', data)
       router.refresh()
-      // Можно добавить тост вместо алерта, но пока оставим алерт
-      // alert('Профиль успешно обновлен!') 
+      alert('Профиль успешно обновлен!')
     } catch (error) {
       console.error('Error updating profile:', error)
-      alert('Ошибка при обновлении профиля')
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Ошибка при обновлении профиля'
+      alert(errorMessage)
     } finally {
       setIsLoading(false)
     }

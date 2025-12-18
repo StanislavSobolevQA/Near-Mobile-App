@@ -5,15 +5,15 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { MockMap } from '@/components/mock-map'
+import { YandexMap } from '@/components/yandex-map'
 import { Search, MapPin, Clock, Heart, ArrowRight, Users, Shield, Zap } from 'lucide-react'
 import Link from 'next/link'
-import type { Request } from '@/lib/types'
+import type { SafeRequest } from '@/lib/types'
 
 import { User } from '@supabase/supabase-js'
 
 interface HomeClientProps {
-  initialRequests: Request[]
+  initialRequests: SafeRequest[]
   user: User | null
 }
 
@@ -37,7 +37,7 @@ export function HomeClient({ initialRequests, user }: HomeClientProps) {
   const [selectedDistrict, setSelectedDistrict] = useState('Все районы')
   const [selectedCategory, setSelectedCategory] = useState('Все категории')
   const [searchQuery, setSearchQuery] = useState('')
-  const [filteredRequests, setFilteredRequests] = useState<Request[]>(initialRequests)
+  const [filteredRequests, setFilteredRequests] = useState<SafeRequest[]>(initialRequests)
 
   useEffect(() => {
     let filtered = [...initialRequests]
@@ -258,19 +258,23 @@ export function HomeClient({ initialRequests, user }: HomeClientProps) {
               </p>
             </div>
             <div className="bg-white rounded-2xl border border-gray-200/50 p-6 shadow-xl hover:shadow-2xl transition-shadow">
-              <MockMap requests={filteredRequests.map(r => ({
-                id: r.id,
-                type: 'need' as const,
-                title: r.title,
-                category: r.category,
-                urgency: r.urgency,
-                reward: r.reward_type,
-                amount: r.reward_amount || undefined,
-                location: r.district,
-                district: r.district,
-                createdAt: new Date(r.created_at),
-                description: r.description,
-              }))} />
+              <YandexMap 
+                requests={filteredRequests.map(r => ({
+                  id: r.id,
+                  type: 'need' as const,
+                  title: r.title,
+                  category: r.category,
+                  urgency: r.urgency,
+                  reward: r.reward_type,
+                  amount: r.reward_amount || undefined,
+                  location: r.district,
+                  district: r.district,
+                  createdAt: new Date(r.created_at),
+                  description: r.description,
+                }))}
+                center={[55.7558, 37.6173]} // Москва (можно настроить под ваш город)
+                zoom={11}
+              />
             </div>
           </div>
         </div>

@@ -102,6 +102,18 @@ export async function createOffer(requestId: string) {
     throw new Error('Unauthorized')
   }
 
+  // Проверяем, не создал ли пользователь уже отклик на этот запрос
+  const { data: existingOffer } = await supabase
+    .from('offers')
+    .select('id')
+    .eq('request_id', requestId)
+    .eq('helper_id', user.id)
+    .single()
+
+  if (existingOffer) {
+    return { success: false, error: 'ALREADY_OFFERED', message: 'Вы уже откликнулись на этот запрос' }
+  }
+
   const { error } = await supabase
     .from('offers')
     .insert({
@@ -111,11 +123,16 @@ export async function createOffer(requestId: string) {
 
   if (error) {
     console.error('Error creating offer:', error)
+    // Проверяем, если это ошибка дубликата (UNIQUE constraint)
+    if (error.code === '23505') {
+      return { success: false, error: 'ALREADY_OFFERED', message: 'Вы уже откликнулись на этот запрос' }
+    }
     return { success: false, error: error.message }
   }
 
   revalidatePath('/')
   revalidatePath('/dashboard')
+  revalidatePath(`/requests/${requestId}`)
   return { success: true }
 }
 
@@ -168,4 +185,79 @@ export async function getRequestContact(requestId: string) {
   }
 
   return data
+}
+
+export async function getRequestById(id: string) {
+  const supabase = createClient()
+
+  const { data: request, error } = await supabase
+    .from('requests')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error || !request) {
+    console.error('Error fetching request:', error)
+    return null
+  }
+
+  // Fetch author profile manually to avoid join issues
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', request.author_id)
+    .single()
+
+  return {
+    ...request,
+    profiles: profile
+  }
+}
+
+export async function getOffers(requestId: string) {
+  const supabase = createClient()
+
+  const { data: offers, error } = await supabase
+    .from('offers')
+    .select('*')
+    .eq('request_id', requestId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching offers:', error)
+    return []
+  }
+
+  // Fetch profiles for all offers
+  const offersWithProfiles = await Promise.all(offers.map(async (offer) => {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', offer.helper_id)
+      .single()
+
+    return {
+      ...offer,
+      profiles: profile
+    }
+  }))
+
+  return offersWithProfiles
+}
+
+export async function getUserProfile(userId: string) {
+  const supabase = createClient()
+
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single()
+
+  if (error) {
+    console.error('Error fetching user profile:', error)
+    return null
+  }
+
+  return profile
 }

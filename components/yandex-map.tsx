@@ -24,21 +24,23 @@ interface YandexMapProps {
   zoom?: number
 }
 
-// Простые координаты для демонстрации (можно заменить на реальные)
+// Координаты для районов (примерные для Москвы, можно настроить под ваш город)
 const getCoordinates = (district: string, index: number): [number, number] => {
   const baseCoords: Record<string, [number, number]> = {
-    'Центральный': [55.7558, 37.6173],
-    'Северный': [55.7658, 37.6273],
-    'Южный': [55.7458, 37.6073],
-    'Восточный': [55.7558, 37.6373],
-    'Западный': [55.7558, 37.5973],
+    'Центральный': [55.7558, 37.6173], // Москва, центр
+    'Северный': [55.8358, 37.6173],   // Москва, север
+    'Южный': [55.6758, 37.6173],      // Москва, юг
+    'Восточный': [55.7558, 37.7773],  // Москва, восток
+    'Западный': [55.7558, 37.4573],   // Москва, запад
+    'Все районы': [55.7558, 37.6173], // Москва, центр
   }
   
   const base = baseCoords[district] || [55.7558, 37.6173]
-  // Добавляем небольшое смещение для разных задач
+  // Добавляем небольшое случайное смещение для разных задач в одном районе
+  const offset = (index % 5) * 0.005 - 0.01
   return [
-    base[0] + (index % 3) * 0.01 - 0.01,
-    base[1] + (Math.floor(index / 3) % 3) * 0.01 - 0.01
+    base[0] + offset,
+    base[1] + offset
   ]
 }
 
@@ -93,8 +95,13 @@ export function YandexMap({ requests, center = [55.7558, 37.6173], zoom = 11 }: 
     }
     
     // Создаем новый скрипт
+    // Примечание: для использования API ключа добавьте &apikey=YOUR_API_KEY
+    // Получить ключ можно на https://developer.tech.yandex.ru/
+    const apiKey = process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY
     const script = document.createElement('script')
-    script.src = 'https://api-maps.yandex.ru/2.1/?lang=ru_RU'
+    script.src = apiKey 
+      ? `https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=${apiKey}`
+      : 'https://api-maps.yandex.ru/2.1/?lang=ru_RU'
     script.async = true
     
     script.onload = () => {
@@ -210,19 +217,19 @@ export function YandexMap({ requests, center = [55.7558, 37.6173], zoom = 11 }: 
         const placemark = new ymaps.Placemark(
           [lat, lng],
           {
-            balloonContentHeader: `<div style="font-weight: 600; font-size: 16px; margin-bottom: 8px;">${request.title}</div>`,
+            balloonContentHeader: `<div style="font-weight: 600; font-size: 16px; margin-bottom: 8px; color: #111827;">${request.title}</div>`,
             balloonContentBody: `
-              <div style="margin-bottom: 8px;">
-                <div style="margin-bottom: 4px;"><strong>Категория:</strong> ${request.category}</div>
-                <div style="margin-bottom: 4px;"><strong>Район:</strong> ${request.district}</div>
-                <div style="margin-bottom: 4px;"><strong>Адрес:</strong> ${request.location}</div>
-                <div style="margin-bottom: 4px;"><strong>Вознаграждение:</strong> ${
+              <div style="margin-bottom: 12px;">
+                <div style="margin-bottom: 6px; font-size: 14px;"><strong>Категория:</strong> <span style="color: #4b5563;">${request.category}</span></div>
+                <div style="margin-bottom: 6px; font-size: 14px;"><strong>Район:</strong> <span style="color: #4b5563;">${request.district}</span></div>
+                <div style="margin-bottom: 6px; font-size: 14px;"><strong>Вознаграждение:</strong> <span style="color: #059669; font-weight: 600;">${
                   request.reward === 'money' ? `${request.amount} ₽` : 'Спасибо'
-                }</div>
+                }</span></div>
               </div>
-              <div style="color: #6b7280; font-size: 14px;">${request.description}</div>
+              <div style="color: #6b7280; font-size: 14px; margin-bottom: 12px; line-height: 1.5;">${request.description.substring(0, 150)}${request.description.length > 150 ? '...' : ''}</div>
+              <a href="/requests/${request.id}" style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500; transition: background 0.2s;" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">Подробнее →</a>
             `,
-            balloonContentFooter: `<div style="font-size: 12px; color: #9ca3af;">${new Date(request.createdAt).toLocaleDateString('ru-RU')}</div>`,
+            balloonContentFooter: `<div style="font-size: 12px; color: #9ca3af; margin-top: 8px;">${new Date(request.createdAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</div>`,
             hintContent: request.title
           },
           {
