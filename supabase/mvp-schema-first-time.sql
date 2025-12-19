@@ -76,3 +76,4 @@ CREATE POLICY "Allow all inserts" ON public.offers
 
 
 
+
