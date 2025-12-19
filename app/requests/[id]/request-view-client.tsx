@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { createOffer, getRequestContact, closeRequest, getRequestById } from '@/app/actions/requests'
 import { Clock, MapPin, User, CheckCircle, MessageCircle, Copy, ArrowRight, Shield, Zap, Info } from 'lucide-react'
+import { toast } from 'sonner'
 import Link from 'next/link'
 import type { Request } from '@/lib/types'
 
@@ -42,16 +43,31 @@ export function RequestViewClient({ request, offers: initialOffers, isAuthor, us
     setIsLoading(true)
     try {
       const result = await createOffer(request.id)
-      if (!result.success && result.error !== 'ALREADY_OFFERED') {
-        throw new Error(result.error || 'Ошибка')
+      
+      if (!result.success) {
+        const errorMessages: Record<string, string> = {
+          'ALREADY_OFFERED': 'Вы уже откликнулись на этот запрос',
+          'CANNOT_OFFER_OWN_REQUEST': 'Вы не можете откликнуться на свой запрос',
+          'REQUEST_CLOSED': 'Этот запрос уже закрыт',
+          'REQUEST_NOT_FOUND': 'Запрос не найден'
+        }
+        const message = result.message || errorMessages[result.error || ''] || 'Ошибка при отклике'
+        toast.error(message)
+        return
       }
 
+      // Получаем контакты после успешного отклика
       const contactData = await getRequestContact(request.id)
-      setContact(contactData)
+      if (contactData) {
+        setContact(contactData)
+      }
       setIsOfferDialogOpen(false)
       router.refresh()
+      toast.success('Отклик успешно отправлен!')
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Ошибка при отклике')
+      const errorMessage = error instanceof Error ? error.message : 'Ошибка при отклике'
+      toast.error(errorMessage)
+      console.error('Error creating offer:', error)
     } finally {
       setIsLoading(false)
     }
@@ -62,10 +78,16 @@ export function RequestViewClient({ request, offers: initialOffers, isAuthor, us
 
     setIsLoading(true)
     try {
-      await closeRequest(request.id)
-      router.push('/dashboard/requests')
+      const result = await closeRequest(request.id)
+      if (result.success) {
+        toast.success('Запрос успешно закрыт')
+        router.push('/dashboard/requests')
+      } else {
+        toast.error(result.error || 'Ошибка при закрытии запроса')
+      }
     } catch (error) {
-      alert('Ошибка при закрытии запроса')
+      toast.error('Ошибка при закрытии запроса')
+      console.error('Error closing request:', error)
     } finally {
       setIsLoading(false)
     }
@@ -251,7 +273,7 @@ export function RequestViewClient({ request, offers: initialOffers, isAuthor, us
                               size="sm"
                               onClick={() => {
                                 navigator.clipboard.writeText(contact.contact_value)
-                                alert('Скопировано!')
+                                toast.success('Скопировано!')
                               }}
                               className="w-full"
                             >

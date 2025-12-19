@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { closeRequest } from '@/app/actions/requests'
 import { Clock, MapPin, Trash2, CheckCircle } from 'lucide-react'
+import { toast } from 'sonner'
 import type { SafeRequest } from '@/lib/types'
 import { useRouter } from 'next/navigation'
 
@@ -35,11 +36,17 @@ export function MyRequestsClient({ initialRequests }: MyRequestsClientProps) {
 
     setClosingId(id)
     try {
-      await closeRequest(id)
-      setRequests(requests.map(r => r.id === id ? { ...r, status: 'closed' } : r))
-      router.refresh()
+      const result = await closeRequest(id)
+      if (result.success) {
+        setRequests(requests.map(r => r.id === id ? { ...r, status: 'closed' } : r))
+        router.refresh()
+        toast.success('Запрос успешно закрыт')
+      } else {
+        toast.error(result.error || 'Ошибка при закрытии запроса')
+      }
     } catch (error) {
-      alert('Ошибка при закрытии запроса')
+      toast.error('Ошибка при закрытии запроса')
+      console.error('Error closing request:', error)
     } finally {
       setClosingId(null)
     }

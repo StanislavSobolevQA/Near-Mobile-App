@@ -1,4 +1,4 @@
-import { getRequests, getUserProfile } from '@/app/actions/requests'
+import { getRequests, getUserProfile, getMyOffers, getUserOfferIds } from '@/app/actions/requests'
 import { sanitizeRequests } from '@/lib/utils'
 import { DashboardClient } from './page-client'
 import { createClient } from '@/lib/supabase/server'
@@ -23,10 +23,10 @@ export default async function DashboardPage() {
     console.error('Error loading user profile:', error)
   }
 
-  // Загружаем запросы
+  // Загружаем открытые запросы (для таба "Нужна помощь")
   let requests: SafeRequest[] = []
   try {
-    const fetchedRequests = await getRequests()
+    const fetchedRequests = await getRequests(undefined, 'open')
     // Удаляем contact_value для безопасности (не передаем в клиентский компонент)
     requests = sanitizeRequests(fetchedRequests)
   } catch (error) {
@@ -34,9 +34,23 @@ export default async function DashboardPage() {
     requests = []
   }
 
+  // Загружаем запросы, на которые пользователь откликнулся (для таба "Могу помочь")
+  let myOffers: SafeRequest[] = []
+  let userOfferIds: string[] = []
+  try {
+    const fetchedMyOffers = await getMyOffers()
+    myOffers = sanitizeRequests(fetchedMyOffers)
+    userOfferIds = await getUserOfferIds()
+  } catch (error) {
+    console.error('Error loading my offers:', error)
+    myOffers = []
+  }
+
   return (
     <DashboardClient
       initialRequests={requests}
+      initialMyOffers={myOffers}
+      userOfferIds={userOfferIds}
       userDistrict={userDistrict}
     />
   )

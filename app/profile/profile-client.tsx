@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import { Save, Loader2, Upload, Camera } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { toast } from 'sonner'
 
 const districts = ['Центральный', 'Северный', 'Южный', 'Восточный', 'Западный']
 
@@ -60,9 +61,10 @@ export function ProfileClient({ user, initialProfile }: ProfileClientProps) {
         .getPublicUrl(filePath)
 
       setFormData({ ...formData, avatar_url: publicUrl })
+      toast.success('Аватар успешно загружен')
     } catch (error) {
       console.error('Error uploading avatar:', error)
-      alert('Ошибка при загрузке аватара. Убедитесь, что бакет "avatars" существует и доступен.')
+      toast.error('Ошибка при загрузке аватара. Убедитесь, что бакет "avatars" существует и доступен.')
     } finally {
       setIsUploading(false)
     }
@@ -127,13 +129,13 @@ export function ProfileClient({ user, initialProfile }: ProfileClientProps) {
 
       console.log('Profile updated successfully:', data)
       router.refresh()
-      alert('Профиль успешно обновлен!')
+      toast.success('Профиль успешно обновлен!')
     } catch (error) {
       console.error('Error updating profile:', error)
       const errorMessage = error instanceof Error 
         ? error.message 
         : 'Ошибка при обновлении профиля'
-      alert(errorMessage)
+      toast.error(errorMessage)
     } finally {
       setIsLoading(false)
     }

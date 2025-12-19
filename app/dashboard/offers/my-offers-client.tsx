@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Clock, MapPin, MessageCircle } from 'lucide-react'
 import { getRequestContact } from '@/app/actions/requests'
+import { toast } from 'sonner'
 import { useState } from 'react'
 import Link from 'next/link'
 
@@ -36,11 +37,13 @@ export function MyOffersClient({ initialOffers }: MyOffersClientProps) {
       const contact = await getRequestContact(requestId)
       if (contact) {
         setContacts((prev) => ({ ...prev, [requestId]: contact as { contact_type: string; contact_value: string } }))
+        toast.success('Контакт получен')
       } else {
         throw new Error('Contact not found')
       }
     } catch (error) {
-      alert('Не удалось получить контакт. Убедитесь, что вы откликнулись на запрос.')
+      toast.error('Не удалось получить контакт. Убедитесь, что вы откликнулись на запрос.')
+      console.error('Error getting contact:', error)
     } finally {
       setLoadingContact(null)
     }

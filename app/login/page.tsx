@@ -7,13 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { toast } from 'sonner'
 import { Loader2, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
-
-// Fallback if no toast lib
-const showToast = (message: string, type: 'error' | 'success') => {
-  alert(message)
-}
 
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
@@ -35,13 +31,15 @@ export default function LoginPage() {
       })
 
       if (error) {
-        showToast(error.message, 'error')
+        toast.error(error.message)
       } else {
+        toast.success('Вход выполнен успешно')
         router.push('/dashboard')
         router.refresh()
       }
     } catch (e) {
-      showToast('Произошла ошибка', 'error')
+      toast.error('Произошла ошибка')
+      console.error('Login error:', e)
     } finally {
       setIsLoading(false)
     }
@@ -65,9 +63,9 @@ export default function LoginPage() {
       })
 
       if (error) {
-        showToast(error.message, 'error')
+        toast.error(error.message)
       } else {
-        showToast('Проверьте почту для подтверждения регистрации (если требуется), или войдите.', 'success')
+        toast.success('Проверьте почту для подтверждения регистрации (если требуется), или войдите.')
         // В некоторых случаях Supabase сразу логинит, если подтверждение отключено
         const { data: { session } } = await supabase.auth.getSession()
         if (session) {
@@ -76,7 +74,8 @@ export default function LoginPage() {
         }
       }
     } catch (e) {
-      showToast('Произошла ошибка', 'error')
+      toast.error('Произошла ошибка')
+      console.error('Signup error:', e)
     } finally {
       setIsLoading(false)
     }

@@ -4,13 +4,18 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
-export async function getRequests(district?: string) {
+export async function getRequests(district?: string, status: 'open' | 'all' = 'open') {
   const supabase = createClient()
 
   let query = supabase
     .from('requests')
     .select('*')
     .order('created_at', { ascending: false })
+
+  // Фильтрация по статусу (по умолчанию только открытые)
+  if (status === 'open') {
+    query = query.eq('status', 'open')
+  }
 
   if (district && district !== 'Все районы') {
     query = query.eq('district', district)
@@ -102,6 +107,25 @@ export async function createOffer(requestId: string) {
     throw new Error('Unauthorized')
   }
 
+  // Проверяем, не является ли пользователь автором запроса
+  const { data: request } = await supabase
+    .from('requests')
+    .select('author_id, status')
+    .eq('id', requestId)
+    .single()
+
+  if (!request) {
+    return { success: false, error: 'REQUEST_NOT_FOUND', message: 'Запрос не найден' }
+  }
+
+  if (request.author_id === user.id) {
+    return { success: false, error: 'CANNOT_OFFER_OWN_REQUEST', message: 'Вы не можете откликнуться на свой запрос' }
+  }
+
+  if (request.status !== 'open') {
+    return { success: false, error: 'REQUEST_CLOSED', message: 'Этот запрос уже закрыт' }
+  }
+
   // Проверяем, не создал ли пользователь уже отклик на этот запрос
   const { data: existingOffer } = await supabase
     .from('offers')
@@ -172,19 +196,45 @@ export async function closeRequest(requestId: string) {
 export async function getRequestContact(requestId: string) {
   const supabase = createClient()
 
-  // TODO: Add proper permission check (only offerer or author can see contact)
-
-  const { data, error } = await supabase
-    .from('requests')
-    .select('contact_type, contact_value')
-    .eq('id', requestId)
-    .single()
-
-  if (error || !data) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
     return null
   }
 
-  return data
+  // Получаем информацию о запросе
+  const { data: request, error: requestError } = await supabase
+    .from('requests')
+    .select('author_id, contact_type, contact_value')
+    .eq('id', requestId)
+    .single()
+
+  if (requestError || !request) {
+    return null
+  }
+
+  // Проверяем, является ли пользователь автором
+  const isAuthor = request.author_id === user.id
+
+  // Если не автор, проверяем, есть ли отклик от этого пользователя
+  if (!isAuthor) {
+    const { data: offer } = await supabase
+      .from('offers')
+      .select('id')
+      .eq('request_id', requestId)
+      .eq('helper_id', user.id)
+      .single()
+
+    if (!offer) {
+      // Пользователь не имеет права видеть контакты
+      return null
+    }
+  }
+
+  // Возвращаем контакты только если пользователь имеет право их видеть
+  return {
+    contact_type: request.contact_type,
+    contact_value: request.contact_value
+  }
 }
 
 export async function getRequestById(id: string) {
@@ -228,21 +278,25 @@ export async function getOffers(requestId: string) {
     return []
   }
 
-  // Fetch profiles for all offers
-  const offersWithProfiles = await Promise.all(offers.map(async (offer) => {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', offer.helper_id)
-      .single()
+  if (!offers || offers.length === 0) {
+    return []
+  }
 
-    return {
-      ...offer,
-      profiles: profile
-    }
+  // Загружаем все профили одним запросом (исправление N+1)
+  const helperIds = offers.map(o => o.helper_id)
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('*')
+    .in('id', helperIds)
+
+  // Создаем Map для быстрого поиска профилей
+  const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
+
+  // Сопоставляем профили с откликами
+  return offers.map(offer => ({
+    ...offer,
+    profiles: profileMap.get(offer.helper_id) || null
   }))
-
-  return offersWithProfiles
 }
 
 export async function getUserProfile(userId: string) {
@@ -260,4 +314,61 @@ export async function getUserProfile(userId: string) {
   }
 
   return profile
+}
+
+// Получить запросы, на которые пользователь откликнулся
+export async function getMyOffers() {
+  const supabase = createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return []
+  }
+
+  // Получаем все отклики пользователя
+  const { data: offers, error: offersError } = await supabase
+    .from('offers')
+    .select('request_id')
+    .eq('helper_id', user.id)
+    .order('created_at', { ascending: false })
+
+  if (offersError || !offers || offers.length === 0) {
+    return []
+  }
+
+  // Получаем все запросы одним запросом
+  const requestIds = offers.map(o => o.request_id)
+  const { data: requests, error: requestsError } = await supabase
+    .from('requests')
+    .select('*')
+    .in('id', requestIds)
+    .order('created_at', { ascending: false })
+
+  if (requestsError) {
+    console.error('Error fetching requests:', requestsError)
+    return []
+  }
+
+  return requests || []
+}
+
+// Получить ID запросов, на которые пользователь откликнулся (для проверки)
+export async function getUserOfferIds() {
+  const supabase = createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return []
+  }
+
+  const { data: offers, error } = await supabase
+    .from('offers')
+    .select('request_id')
+    .eq('helper_id', user.id)
+
+  if (error || !offers) {
+    return []
+  }
+
+  return offers.map(o => o.request_id)
 }

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { createRequest } from '@/app/actions/requests'
+import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 
 type Category = 'уборка' | 'ремонт' | 'доставка' | 'уход' | 'другое'
@@ -48,7 +49,7 @@ export function CreateRequestClient({ userDistrict }: CreateRequestClientProps) 
     e.preventDefault()
 
     if (!formData.category || !formData.title || !formData.description || !formData.contactValue || !formData.district) {
-      alert('Заполните все обязательные поля')
+      toast.error('Заполните все обязательные поля')
       return
     }
 
@@ -66,10 +67,12 @@ export function CreateRequestClient({ userDistrict }: CreateRequestClientProps) 
         contact_value: formData.contactValue,
       })
 
+      toast.success('Запрос успешно создан!')
       router.push('/dashboard/requests')
       router.refresh()
     } catch (error) {
-      alert('Ошибка при создании запроса')
+      const errorMessage = error instanceof Error ? error.message : 'Ошибка при создании запроса'
+      toast.error(errorMessage)
       console.error(error)
     } finally {
       setIsLoading(false)

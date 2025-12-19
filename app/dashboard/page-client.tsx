@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Plus, Search, Clock, MapPin, Heart } from 'lucide-react'
 import { createRequest, createOffer } from '@/app/actions/requests'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import type { SafeRequest } from '@/lib/types'
 
 type Category = 'уборка' | 'ремонт' | 'доставка' | 'уход' | 'другое'
@@ -46,14 +47,18 @@ function formatTimeAgo(date: string): string {
 
 interface DashboardClientProps {
   initialRequests: SafeRequest[]
+  initialMyOffers?: SafeRequest[]
+  userOfferIds?: string[]
   userDistrict?: string
 }
 
-export function DashboardClient({ initialRequests, userDistrict }: DashboardClientProps) {
+export function DashboardClient({ initialRequests, initialMyOffers = [], userOfferIds = [], userDistrict }: DashboardClientProps) {
   const router = useRouter()
   const [selectedDistrict, setSelectedDistrict] = useState(userDistrict || 'Все районы')
   const [activeTab, setActiveTab] = useState<'need' | 'offer'>('need')
   const [requests, setRequests] = useState<SafeRequest[]>(initialRequests)
+  const [myOffers, setMyOffers] = useState<SafeRequest[]>(initialMyOffers)
+  const [userOffersSet, setUserOffersSet] = useState<Set<string>>(new Set(userOfferIds))
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingContact, setIsLoadingContact] = useState(false)
@@ -76,38 +81,64 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
     contactValue: '',
   })
 
-  // Фильтрация запросов
+  // Фильтрация запросов для таба "Нужна помощь"
   const filteredRequests = useMemo(() => {
-    return requests.filter(req => {
+    const source = activeTab === 'need' ? requests : myOffers
+    return source.filter(req => {
       if (selectedDistrict !== 'Все районы' && req.district !== selectedDistrict) return false
       if (categoryFilter !== 'all' && req.category !== categoryFilter) return false
       if (urgencyFilter !== 'all' && req.urgency !== urgencyFilter) return false
       if (onlyPaid && req.reward_type !== 'money') return false
-      if (searchQuery && !req.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
+      if (searchQuery && !req.title.toLowerCase().includes(searchQuery.toLowerCase()) && !req.description.toLowerCase().includes(searchQuery.toLowerCase())) return false
       return true
     })
-  }, [requests, selectedDistrict, categoryFilter, urgencyFilter, onlyPaid, searchQuery])
+  }, [requests, myOffers, activeTab, selectedDistrict, categoryFilter, urgencyFilter, onlyPaid, searchQuery])
 
   const handleCreateRequest = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
 
+    // Валидация обязательных полей
     if (!formData.category || !formData.title || !formData.description || !formData.contactValue) {
-      alert('Заполните все обязательные поля')
+      toast.error('Заполните все обязательные поля')
+      return
+    }
+
+    // Валидация суммы вознаграждения
+    if (formData.reward === 'money') {
+      const amount = Number(formData.amount)
+      if (isNaN(amount) || amount <= 0) {
+        toast.error('Укажите корректную сумму больше 0')
+        return
+      }
+      if (amount > 1000000) {
+        toast.error('Сумма не может превышать 1 000 000 ₽')
+        return
+      }
+    }
+
+    // Валидация длины полей
+    if (formData.title.length < 5 || formData.title.length > 100) {
+      toast.error('Заголовок должен быть от 5 до 100 символов')
+      return
+    }
+
+    if (formData.description.length < 10 || formData.description.length > 2000) {
+      toast.error('Описание должно быть от 10 до 2000 символов')
       return
     }
 
     setIsLoading(true)
     try {
       const newRequest = await createRequest({
-        title: formData.title,
-        description: formData.description,
+        title: formData.title.trim(),
+        description: formData.description.trim(),
         category: formData.category,
         urgency: formData.urgency,
         reward_type: formData.reward,
         reward_amount: formData.reward === 'money' ? Number(formData.amount) : null,
         district: selectedDistrict === 'Все районы' ? 'Центральный' : selectedDistrict,
         contact_type: formData.contactType,
-        contact_value: formData.contactValue,
+        contact_value: formData.contactValue.trim(),
       })
 
       // Обновляем список и перенаправляем
@@ -116,6 +147,7 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
       setRequests([safeRequest as SafeRequest, ...requests])
       setIsCreateDialogOpen(false)
       router.refresh()
+      toast.success('Запрос успешно создан!')
       setFormData({
         category: '' as Category | '',
         title: '',
@@ -127,7 +159,9 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
         contactValue: '',
       })
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Ошибка при создании запроса')
+      const errorMessage = error instanceof Error ? error.message : 'Ошибка при создании запроса'
+      toast.error(errorMessage)
+      console.error('Error creating request:', error)
     } finally {
       setIsLoading(false)
     }
@@ -136,11 +170,33 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
   const handleRespond = async (request: SafeRequest) => {
     setIsLoadingContact(true)
     try {
-      await createOffer(request.id)
-      router.refresh()
-      alert('Отклик успешно отправлен!')
+      const result = await createOffer(request.id)
+      
+      if (!result.success) {
+        const errorMessages: Record<string, string> = {
+          'ALREADY_OFFERED': 'Вы уже откликнулись на этот запрос',
+          'CANNOT_OFFER_OWN_REQUEST': 'Вы не можете откликнуться на свой запрос',
+          'REQUEST_CLOSED': 'Этот запрос уже закрыт',
+          'REQUEST_NOT_FOUND': 'Запрос не найден'
+        }
+        const message = result.message || errorMessages[result.error || ''] || 'Ошибка при отклике'
+        toast.error(message)
+        return
+      }
+
+      // Обновляем состояние - добавляем ID в множество откликов
+      setUserOffersSet(prev => new Set([...prev, request.id]))
+      
+      // Если это таб "Могу помочь", обновляем список
+      if (activeTab === 'offer') {
+        router.refresh()
+      }
+      
+      toast.success('Отклик успешно отправлен!')
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Ошибка при отклике')
+      const errorMessage = error instanceof Error ? error.message : 'Ошибка при отклике'
+      toast.error(errorMessage)
+      console.error('Error creating offer:', error)
     } finally {
       setIsLoadingContact(false)
     }
@@ -242,14 +298,20 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
               <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
                 <Heart className="h-16 w-16 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">Нет результатов</h3>
-                <p className="text-gray-600 mb-6">Попробуйте изменить фильтры или создайте свой запрос</p>
-                <Button
-                  onClick={() => setIsCreateDialogOpen(true)}
-                  className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg hover:shadow-xl transition-all text-white"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Создать запрос
-                </Button>
+                <p className="text-gray-600 mb-6">
+                  {activeTab === 'offer' 
+                    ? 'Вы еще не откликнулись ни на один запрос'
+                    : 'Попробуйте изменить фильтры или создайте свой запрос'}
+                </p>
+                {activeTab === 'need' && (
+                  <Button
+                    onClick={() => setIsCreateDialogOpen(true)}
+                    className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg hover:shadow-xl transition-all text-white"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Создать запрос
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="space-y-4">
@@ -274,6 +336,11 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
                               ? `${request.reward_amount} ₽`
                               : 'Спасибо'}
                           </Badge>
+                          {userOffersSet.has(request.id) && (
+                            <Badge variant="secondary" className="bg-green-100 text-green-700 border-green-200">
+                              Вы откликнулись
+                            </Badge>
+                          )}
                           {request.status !== 'open' && (
                             <Badge variant="outline">
                               {request.status === 'in_progress' ? 'В работе' : 'Закрыт'}
@@ -294,13 +361,22 @@ export function DashboardClient({ initialRequests, userDistrict }: DashboardClie
                     </div>
                     <p className="text-gray-700 mb-4">{request.description}</p>
                     <div className="flex gap-2">
-                      {request.status === 'open' && (
+                      {request.status === 'open' && !userOffersSet.has(request.id) && (
                         <Button
                           onClick={() => handleRespond(request)}
                           className="w-full md:w-auto bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-md hover:shadow-lg transition-all text-white"
                           disabled={isLoadingContact}
                         >
                           {isLoadingContact ? 'Загрузка...' : 'Откликнуться'}
+                        </Button>
+                      )}
+                      {userOffersSet.has(request.id) && (
+                        <Button
+                          variant="outline"
+                          className="w-full md:w-auto border-green-300 text-green-700 bg-green-50"
+                          disabled
+                        >
+                          Вы уже откликнулись
                         </Button>
                       )}
                     </div>

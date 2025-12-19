@@ -9,7 +9,7 @@ export default async function HomePage() {
 
   // Загружаем открытые запросы для главной страницы
   try {
-    const requests = await getRequests()
+    const requests = await getRequests(undefined, 'open') // Только открытые запросы
     // Удаляем contact_value для безопасности (не передаем в клиентский компонент)
     const safeRequests = sanitizeRequests(requests)
     return <HomeClient initialRequests={safeRequests} user={user} />
