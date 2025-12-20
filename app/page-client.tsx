@@ -42,7 +42,8 @@ export function HomeClient({ initialRequests, user }: HomeClientProps) {
   const [filteredRequests, setFilteredRequests] = useState<SafeRequest[]>(initialRequests)
 
   useEffect(() => {
-    let filtered = [...initialRequests]
+    // Фильтруем только открытые запросы (исключаем закрытые и в работе)
+    let filtered = initialRequests.filter(req => req.status === 'open')
 
     if (selectedDistrict !== 'Все районы') {
       filtered = filtered.filter(req => req.district === selectedDistrict)

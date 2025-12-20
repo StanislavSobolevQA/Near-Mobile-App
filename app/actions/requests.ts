@@ -3,24 +3,21 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
-import { createRequestSchema } from '@/lib/validation'
+import { createRequestSchema, updateRequestSchema } from '@/lib/validation'
 import type { PaginatedResponse, Status, District } from '@/lib/types'
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, DISTRICTS } from '@/lib/constants'
 
 export async function getRequests(
   district?: string, 
   status: 'open' | 'all' = 'open',
-  page: number = 1,
-  pageSize: number = DEFAULT_PAGE_SIZE
+  page?: number,
+  pageSize?: number
 ): Promise<PaginatedResponse<any> | any[]> {
   const supabase = createClient()
 
-  // Валидация параметров пагинации
-  const validPage = Math.max(1, Math.floor(page))
-  const validPageSize = Math.min(Math.max(1, Math.floor(pageSize)), MAX_PAGE_SIZE)
-
-  // Если пагинация не запрошена (старый API), возвращаем массив
-  const usePagination = page > 0 && pageSize > 0
+  // Если пагинация явно запрошена (переданы page и pageSize), используем её
+  // Иначе возвращаем все данные как массив (старый API для обратной совместимости)
+  const usePagination = page !== undefined && pageSize !== undefined
 
   let query = supabase
     .from('requests')
@@ -36,7 +33,9 @@ export async function getRequests(
     query = query.eq('district', district)
   }
 
-  if (usePagination) {
+  if (usePagination && page !== undefined && pageSize !== undefined) {
+    const validPage = Math.max(1, Math.floor(page))
+    const validPageSize = Math.min(Math.max(1, Math.floor(pageSize)), MAX_PAGE_SIZE)
     const from = (validPage - 1) * validPageSize
     const to = from + validPageSize - 1
     query = query.range(from, to)
@@ -44,14 +43,42 @@ export async function getRequests(
 
   const { data, error, count } = await query
 
+  // Всегда логируем ошибки (даже в продакшене), так как это критично
   if (error) {
-    logger.error('Error fetching requests', error, { district, status, page, pageSize })
+    logger.error('Error fetching requests', error, { 
+      district, 
+      status, 
+      page, 
+      pageSize, 
+      errorMessage: error.message, 
+      errorCode: error.code,
+      errorDetails: error.details,
+      errorHint: error.hint
+    })
     return usePagination 
-      ? { data: [], pagination: { page: validPage, pageSize: validPageSize, total: 0, totalPages: 0 } }
+      ? { data: [], pagination: { page: page || 1, pageSize: pageSize || DEFAULT_PAGE_SIZE, total: 0, totalPages: 0 } }
       : []
   }
 
-  if (usePagination) {
+  // Логируем результат для отладки
+  const requestCount = data?.length || 0
+  logger.info('Fetched requests', { 
+    count: requestCount, 
+    district: district || 'all', 
+    status,
+    hasData: !!data,
+    dataLength: data?.length || 0,
+    usePagination
+  })
+  
+  // Если данных нет, но ошибки тоже нет - логируем это как предупреждение
+  if (requestCount === 0) {
+    logger.warn('No requests found', { district: district || 'all', status, usePagination })
+  }
+
+  if (usePagination && page !== undefined && pageSize !== undefined) {
+    const validPage = Math.max(1, Math.floor(page))
+    const validPageSize = Math.min(Math.max(1, Math.floor(pageSize)), MAX_PAGE_SIZE)
     const total = count || 0
     return {
       data: data || [],
@@ -453,10 +480,10 @@ export async function updateRequest(
   if (params.contact_type !== undefined) updateData.contact_type = params.contact_type
   if (params.contact_value !== undefined) updateData.contact_value = params.contact_value.trim()
 
-  // Валидация через Zod (если переданы все обязательные поля)
-  if (updateData.title && updateData.description && updateData.category) {
+  // Валидация через Zod (если переданы поля для обновления)
+  if (Object.keys(updateData).length > 0) {
     try {
-      createRequestSchema.partial().parse(updateData)
+      updateRequestSchema.parse(updateData)
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
         const zodError = error as any

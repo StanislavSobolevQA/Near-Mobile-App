@@ -117,3 +117,4 @@ CREATE TRIGGER trigger_notify_new_offer
   FOR EACH ROW
   EXECUTE FUNCTION notify_new_offer();
 
+
