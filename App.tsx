@@ -9,36 +9,20 @@ import AuthNavigator from './src/navigation/AuthNavigator';
 import LoadingScreen from './src/components/LoadingScreen';
 
 export default function App() {
-  const { user, loading, initialized, setInitialized, loadUser } = useAuthStore();
+  const { user, initialized, setInitialized } = useAuthStore();
 
   useEffect(() => {
-    const init = async () => {
-      const currentState = useAuthStore.getState();
-      if (!currentState.initialized) {
-        // Устанавливаем таймаут - через 3 секунды принудительно завершаем инициализацию
-        const timeoutId = setTimeout(() => {
-          console.log('Auth initialization timeout - forcing initialization');
-          setInitialized(true);
-          useAuthStore.setState({ loading: false });
-        }, 3000);
-
-        try {
-          await loadUser();
-        } catch (err) {
-          console.error('Error loading user:', err);
-        } finally {
-          clearTimeout(timeoutId);
-          // Всегда устанавливаем initialized в true
-          setInitialized(true);
-          // Убеждаемся, что loading = false
-          useAuthStore.setState({ loading: false });
-        }
-      }
-    };
-    init();
+    // Просто сразу инициализируем приложение
+    // Если есть сохраненная сессия, onAuthStateChange автоматически загрузит пользователя
+    const currentState = useAuthStore.getState();
+    if (!currentState.initialized) {
+      console.log('Initializing app...');
+      setInitialized(true);
+      useAuthStore.setState({ loading: false });
+    }
   }, [setInitialized]);
 
-  // Показываем лоадер только если еще не инициализировано
+  // Показываем лоадер только если еще не инициализировано (должно быть мгновенно)
   if (!initialized) {
     return <LoadingScreen />;
   }

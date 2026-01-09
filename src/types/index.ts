@@ -6,10 +6,12 @@ export interface User {
   phone: string | null
   rating: number
   reviews_count: number
+  created_at: string
+  updated_at: string
+  // Дополнительные поля, которые могут использоваться в приложении:
   about_me?: string | null
   show_phone?: boolean
   show_email?: boolean
-  created_at: string
 }
 
 export interface Task {
@@ -47,6 +49,7 @@ export interface Message {
   chat_id: string
   user_id: string
   content: string
+  read: boolean
   created_at: string
   user?: User
 }
@@ -57,6 +60,7 @@ export interface Chat {
   customer_id: string
   executor_id: string
   created_at: string
+  updated_at: string
   task?: Task
   customer?: User
   executor?: User

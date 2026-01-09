@@ -48,42 +48,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       
       console.log('User authenticated, loading profile...', data.user.id)
       
-      // Пытаемся загрузить пользователя из базы с коротким таймаутом
-      let user: User | null = null
-      let userLoaded = false
+      // Ждем, чтобы сессия полностью сохранилась в AsyncStorage
+      // Это необходимо для RLS политик, которые проверяют auth.uid()
+      console.log('Waiting for session to persist...')
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Используем вспомогательную функцию с таймаутом
+      const user = await loadUserFromDatabase(data.user.id)
+      
+      if (user) {
+        // Пользователь найден в БД
+        set({ user: user as User, loading: false, isAuthenticating: false })
+        console.log('Sign in complete, user loaded:', user.email)
+        return
+      }
+      
+      // Пользователя нет в БД - создаем нового
+      console.log('User not found in database, creating new user...')
       
       try {
-        // Быстрая попытка загрузить пользователя (таймаут 3 секунды)
-        const userPromise = supabase
-          .from('users')
-          .select('*')
-          .eq('id', data.user.id)
-          .single()
-        
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Timeout')), 3000)
-        })
-
-        try {
-          const result = await Promise.race([userPromise, timeoutPromise]) as any
-          if (result.data && !result.error) {
-            user = result.data as User
-            userLoaded = true
-            console.log('User loaded from database')
-          } else if (result.error && result.error.code === 'PGRST116') {
-            // Пользователя нет - это нормально, создадим ниже
-            console.log('User not found in database, will create')
-          }
-        } catch (timeoutError: any) {
-          console.log('Database query timeout, will try to create user')
-        }
-      } catch (dbError: any) {
-        console.log('Database query error:', dbError.message)
-      }
-
-      // Если пользователь не загружен, пытаемся создать его с таймаутом
-      if (!userLoaded) {
-        console.log('Attempting to create user...')
         const createPromise = supabase
           .from('users')
           .insert({
@@ -96,46 +79,40 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           .select()
           .single()
         
-        const createTimeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Create timeout')), 2000) // Уменьшили до 2 секунд
+        const createTimeout = new Promise<any>((_, reject) => {
+          setTimeout(() => reject(new Error('Create user timeout (5s)')), 5000)
         })
+        
+        const createResult = await Promise.race([createPromise, createTimeout])
+        const { data: newUser, error: createError } = createResult
 
-        try {
-          const createResult = await Promise.race([createPromise, createTimeoutPromise]) as any
-          
-          if (createResult.data && !createResult.error) {
-            user = createResult.data as User
-            console.log('User created successfully')
-          } else if (createResult.error && createResult.error.code === '23505') {
-            // Пользователь уже существует - это нормально, используем fallback
-            console.log('User already exists in database, will use fallback')
-          }
-        } catch (createTimeout: any) {
-          console.log('Create user timeout (2s), will use fallback')
-          // Не делаем ничего - просто переходим к fallback
+        if (!createError && newUser) {
+          set({ user: newUser as User, loading: false, isAuthenticating: false })
+          console.log('Sign in complete, user created:', newUser.email)
+          return
         }
+        
+        if (createError && createError.code === '23505') {
+          // Пользователь уже существует (race condition) - загружаем его
+          console.log('User already exists (race condition), loading from database...')
+          const existingUser = await loadUserFromDatabase(data.user.id)
+          
+          if (existingUser) {
+            set({ user: existingUser as User, loading: false, isAuthenticating: false })
+            console.log('Sign in complete, user loaded after race condition:', existingUser.email)
+            return
+          }
+          
+          console.error('Failed to load user after race condition')
+          throw new Error('Не удалось загрузить профиль пользователя')
+        }
+        
+        console.error('Failed to create user:', createError)
+        throw createError || new Error('Не удалось создать профиль пользователя')
+      } catch (err: any) {
+        console.error('Error creating user:', err.message)
+        throw new Error('Не удалось создать профиль пользователя')
       }
-
-      // Если все еще нет пользователя, создаем временный объект из auth данных
-      // Это гарантирует, что авторизация всегда завершится успешно
-      if (!user) {
-        console.log('Creating fallback user from auth data')
-        user = {
-          id: data.user.id,
-          email: data.user.email || '',
-          full_name: data.user.user_metadata?.full_name || 'Пользователь',
-          avatar_url: null,
-          phone: null,
-          rating: 5.0,
-          reviews_count: 0,
-          created_at: new Date().toISOString(),
-        } as User
-        console.log('Fallback user created:', user.id, user.email)
-      }
-
-      console.log('Setting user in store, sign in complete. User ID:', user.id)
-      set({ user: user, loading: false, isAuthenticating: false })
-      console.log('Store updated successfully')
     } catch (error: any) {
       console.error('Sign in failed:', error)
       set({ loading: false, isAuthenticating: false })
@@ -234,45 +211,77 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loadUser: async () => {
     const currentState = get()
     if (currentState.user && !currentState.isAuthenticating) {
+      console.log('loadUser: User already loaded, skipping')
       return
     }
     
     if (currentState.loading && !currentState.isAuthenticating) {
+      console.log('loadUser: Already loading, skipping')
       return
     }
     
+    console.log('loadUser: Starting...')
     set({ loading: true })
     
     try {
-      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+      console.log('loadUser: Getting session...')
       
-      if (authError) {
+      // Добавляем таймаут для getSession(), так как он тоже может зависнуть
+      const getSessionPromise = supabase.auth.getSession()
+      const sessionTimeout = new Promise<any>((_, reject) => {
+        setTimeout(() => reject(new Error('getSession timeout (3s)')), 3000)
+      })
+      
+      let session: any = null
+      let sessionError: any = null
+      
+      try {
+        const result = await Promise.race([getSessionPromise, sessionTimeout]) as any
+        session = result.data?.session
+        sessionError = result.error
+        console.log('loadUser: getSession() completed. Error:', sessionError?.code, 'Session:', session ? 'Yes' : 'No')
+      } catch (timeoutErr: any) {
+        console.error('loadUser: getSession() timeout:', timeoutErr.message)
         set({ user: null, loading: false, isAuthenticating: false })
         return
       }
-
-      if (!authUser) {
+      
+      if (sessionError) {
+        console.error('loadUser: Session error:', sessionError)
         set({ user: null, loading: false, isAuthenticating: false })
         return
       }
-
+      
+      if (!session?.user) {
+        console.log('loadUser: No session or user')
+        set({ user: null, loading: false, isAuthenticating: false })
+        return
+      }
+      
+      const authUser = session.user
+      console.log('loadUser: Got user from session:', authUser.id)
       let user = null
       let retries = 0
       const maxRetries = 3
 
       while (retries < maxRetries && !user) {
+        console.log(`loadUser: Attempting to load from DB (retry ${retries + 1}/${maxRetries})...`)
         const { data, error } = await supabase
           .from('users')
           .select('*')
           .eq('id', authUser.id)
           .single()
 
+        console.log('loadUser: DB query completed. Error:', error?.code, error?.message, 'Data:', data ? 'Yes' : 'No')
+
         if (!error && data) {
           user = data
+          console.log('loadUser: User loaded from DB:', user.email)
           break
         }
 
         if (error && (error.code === 'PGRST116' || error.message?.includes('No rows'))) {
+          console.log('loadUser: User not found, creating...')
           const { data: newUser, error: createError } = await supabase
             .from('users')
             .insert({
@@ -285,45 +294,117 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             .select()
             .single()
 
+          console.log('loadUser: Create completed. Error:', createError?.code, 'User:', newUser ? 'Yes' : 'No')
+
           if (!createError && newUser) {
             user = newUser
+            console.log('loadUser: User created:', user.email)
             break
+          } else {
+            console.error('loadUser: Failed to create user:', createError)
           }
         }
 
         retries++
         if (retries < maxRetries) {
+          console.log(`loadUser: Waiting before retry ${retries + 1}...`)
           await new Promise(resolve => setTimeout(resolve, 500))
         }
       }
 
       if (user) {
+        console.log('loadUser: Setting user in store:', user.email)
         set({ user: user as User, loading: false, isAuthenticating: false })
       } else {
+        console.log('loadUser: No user loaded after all retries')
         set({ user: null, loading: false, isAuthenticating: false })
       }
     } catch (error: any) {
-      console.error('Unexpected error loading user:', error)
-      // При любой ошибке устанавливаем loading в false
+      console.error('loadUser: Unexpected error:', error)
       set({ user: null, loading: false, isAuthenticating: false })
     }
   },
 }))
 
-let isInitialized = false
-supabase.auth.onAuthStateChange(async (event, session) => {
-  if (!isInitialized && event === 'INITIAL_SESSION') {
-    isInitialized = true
-    return
+// Вспомогательная функция для загрузки пользователя из БД с таймаутом
+async function loadUserFromDatabase(userId: string): Promise<User | null> {
+  try {
+    console.log('Loading user from database:', userId)
+    
+    // Добавляем таймаут 5 секунд для запроса к БД
+    const dbQueryPromise = supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single()
+    
+    const timeoutPromise = new Promise<any>((_, reject) => {
+      setTimeout(() => reject(new Error('Database query timeout (5s)')), 5000)
+    })
+    
+    const result = await Promise.race([dbQueryPromise, timeoutPromise])
+    const { data, error } = result
+    
+    console.log('Database query result:', {
+      hasData: !!data,
+      hasError: !!error,
+      errorCode: error?.code,
+      errorMessage: error?.message,
+      errorDetails: error?.details,
+      errorHint: error?.hint,
+    })
+    
+    if (error) {
+      console.error('Error loading user from database:', error.code, error.message)
+      if (error.details) console.error('Error details:', error.details)
+      if (error.hint) console.error('Error hint:', error.hint)
+      return null
+    }
+    
+    if (data) {
+      console.log('User loaded from database:', data.email)
+      return data as User
+    }
+    
+    console.log('No data returned from database')
+    return null
+  } catch (err: any) {
+    console.error('Unexpected error loading user from database:', err.message)
+    return null
   }
+}
+
+// Обработчик изменения состояния аутентификации
+supabase.auth.onAuthStateChange(async (event, session) => {
+  console.log('Auth state changed:', event, 'Session:', session ? 'Yes' : 'No')
   
-  if (event === 'SIGNED_OUT') {
+  if (event === 'INITIAL_SESSION') {
+    // При инициализации проверяем, есть ли активная сессия
+    if (session?.user) {
+      console.log('Initial session found, loading user...')
+      const user = await loadUserFromDatabase(session.user.id)
+      if (user) {
+        useAuthStore.setState({ user, loading: false, isAuthenticating: false })
+      } else {
+        useAuthStore.setState({ user: null, loading: false, isAuthenticating: false })
+      }
+    } else {
+      console.log('No initial session')
+      useAuthStore.setState({ user: null, loading: false, isAuthenticating: false })
+    }
+  } else if (event === 'SIGNED_OUT') {
+    console.log('User signed out')
     globalInitialized = false
     useAuthStore.setState({ user: null, loading: false, isAuthenticating: false, initialized: false })
   } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+    // При входе или обновлении токена загружаем пользователя, если его еще нет в store
     const currentState = useAuthStore.getState()
-    if (!currentState.loading && !currentState.isAuthenticating && !currentState.user) {
-      await useAuthStore.getState().loadUser()
+    if (!currentState.user && session?.user) {
+      console.log('Loading user after sign in or token refresh...')
+      const user = await loadUserFromDatabase(session.user.id)
+      if (user) {
+        useAuthStore.setState({ user, loading: false, isAuthenticating: false })
+      }
     }
   }
 })
