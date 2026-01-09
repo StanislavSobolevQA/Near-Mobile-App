@@ -15,22 +15,36 @@ export default function App() {
     const init = async () => {
       const currentState = useAuthStore.getState();
       if (!currentState.initialized) {
+        // Устанавливаем таймаут - через 3 секунды принудительно завершаем инициализацию
+        const timeoutId = setTimeout(() => {
+          console.log('Auth initialization timeout - forcing initialization');
+          setInitialized(true);
+          useAuthStore.setState({ loading: false });
+        }, 3000);
+
         try {
           await loadUser();
         } catch (err) {
           console.error('Error loading user:', err);
         } finally {
+          clearTimeout(timeoutId);
+          // Всегда устанавливаем initialized в true
           setInitialized(true);
+          // Убеждаемся, что loading = false
+          useAuthStore.setState({ loading: false });
         }
       }
     };
     init();
-  }, []);
+  }, [setInitialized]);
 
-  if (!initialized || loading) {
+  // Показываем лоадер только если еще не инициализировано
+  if (!initialized) {
     return <LoadingScreen />;
   }
 
+  // Показываем навигацию в зависимости от наличия пользователя
+  // App.tsx автоматически перерендерится когда user изменится в store
   return (
     <NavigationContainer>
       <StatusBar style="light" />

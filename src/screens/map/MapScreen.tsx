@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, TextInput, FlatList, Text } from 'react-native';
-// import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { useTasksStore } from '../../store/tasks';
 import TaskCard from '../../components/TaskCard';
+import YandexMap from '../../components/YandexMap';
 import { Task } from '../../types';
 import { getCurrentLocation } from '../../lib/geocoding';
 
@@ -50,13 +50,13 @@ export default function MapScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Временно отключена карта для диагностики */}
-      <View style={styles.mapPlaceholder}>
-        <Text style={styles.mapPlaceholderText}>Карта (временно отключена)</Text>
-        <Text style={styles.mapPlaceholderSubtext}>
-          Широта: {mapRegion.latitude.toFixed(4)}, Долгота: {mapRegion.longitude.toFixed(4)}
-        </Text>
-      </View>
+      <YandexMap
+        tasks={filteredTasks}
+        onTaskClick={selectTask}
+        selectedTask={selectedTask}
+        center={{ lat: mapRegion.latitude, lon: mapRegion.longitude }}
+        zoom={12}
+      />
 
       <View style={styles.searchContainer}>
         <TextInput
@@ -98,22 +98,6 @@ export default function MapScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  mapPlaceholder: {
-    flex: 1,
-    backgroundColor: '#1e293b',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  mapPlaceholderText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  mapPlaceholderSubtext: {
-    color: '#94a3b8',
-    fontSize: 14,
   },
   emptyContainer: {
     padding: 20,

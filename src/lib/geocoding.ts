@@ -11,9 +11,8 @@ export interface GeocodeResult {
 export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
   try {
     // Используем Yandex Geocoding API
-    // В продакшене нужно добавить API ключ в переменные окружения
     const YANDEX_GEOCODE_API = 'https://geocode-maps.yandex.ru/1.x/'
-    const API_KEY = 'YOUR_YANDEX_API_KEY' // Замените на реальный ключ
+    const API_KEY = 'aedd8e59-be9c-4263-918c-f392f66a1445'
     
     const response = await fetch(
       `${YANDEX_GEOCODE_API}?apikey=${API_KEY}&geocode=${encodeURIComponent(address)}&format=json`
@@ -43,7 +42,7 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
 export async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
   try {
     const YANDEX_GEOCODE_API = 'https://geocode-maps.yandex.ru/1.x/'
-    const API_KEY = 'YOUR_YANDEX_API_KEY' // Замените на реальный ключ
+    const API_KEY = 'aedd8e59-be9c-4263-918c-f392f66a1445'
     
     const response = await fetch(
       `${YANDEX_GEOCODE_API}?apikey=${API_KEY}&geocode=${lon},${lat}&format=json`

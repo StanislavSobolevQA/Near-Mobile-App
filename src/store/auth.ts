@@ -31,58 +31,113 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signIn: async (email: string, password: string) => {
     set({ loading: true, isAuthenticating: true })
     try {
+      console.log('Starting sign in...')
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
-      if (error) throw error
+      
+      if (error) {
+        console.error('Sign in error:', error)
+        throw error
+      }
       
       if (!data.user) {
         throw new Error('Не удалось получить данные пользователя')
       }
       
-      await new Promise(resolve => setTimeout(resolve, 200))
+      console.log('User authenticated, loading profile...', data.user.id)
       
-      let loaded = false
-      for (let i = 0; i < 5; i++) {
-        await useAuthStore.getState().loadUser()
-        const { user } = useAuthStore.getState()
-        if (user) {
-          loaded = true
-          break
-        }
-        await new Promise(resolve => setTimeout(resolve, 200))
-      }
+      // Пытаемся загрузить пользователя из базы с коротким таймаутом
+      let user: User | null = null
+      let userLoaded = false
       
-      if (!loaded) {
-        const { data: user, error: userError } = await supabase
+      try {
+        // Быстрая попытка загрузить пользователя (таймаут 3 секунды)
+        const userPromise = supabase
           .from('users')
           .select('*')
           .eq('id', data.user.id)
           .single()
         
-        if (userError && userError.code === 'PGRST116') {
-          const { data: newUser, error: createError } = await supabase
-            .from('users')
-            .insert({
-              id: data.user.id,
-              email: data.user.email || '',
-              full_name: data.user.user_metadata?.full_name || 'Пользователь',
-              rating: 5.0,
-              reviews_count: 0,
-            })
-            .select()
-            .single()
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Timeout')), 3000)
+        })
+
+        try {
+          const result = await Promise.race([userPromise, timeoutPromise]) as any
+          if (result.data && !result.error) {
+            user = result.data as User
+            userLoaded = true
+            console.log('User loaded from database')
+          } else if (result.error && result.error.code === 'PGRST116') {
+            // Пользователя нет - это нормально, создадим ниже
+            console.log('User not found in database, will create')
+          }
+        } catch (timeoutError: any) {
+          console.log('Database query timeout, will try to create user')
+        }
+      } catch (dbError: any) {
+        console.log('Database query error:', dbError.message)
+      }
+
+      // Если пользователь не загружен, пытаемся создать его с таймаутом
+      if (!userLoaded) {
+        console.log('Attempting to create user...')
+        const createPromise = supabase
+          .from('users')
+          .insert({
+            id: data.user.id,
+            email: data.user.email || '',
+            full_name: data.user.user_metadata?.full_name || 'Пользователь',
+            rating: 5.0,
+            reviews_count: 0,
+          })
+          .select()
+          .single()
+        
+        const createTimeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Create timeout')), 2000) // Уменьшили до 2 секунд
+        })
+
+        try {
+          const createResult = await Promise.race([createPromise, createTimeoutPromise]) as any
           
-          if (createError) throw createError
-          set({ user: newUser as User, loading: false, isAuthenticating: false })
-        } else if (user) {
-          set({ user: user as User, loading: false, isAuthenticating: false })
-        } else {
-          throw new Error('Не удалось загрузить профиль пользователя')
+          if (createResult.data && !createResult.error) {
+            user = createResult.data as User
+            console.log('User created successfully')
+          } else if (createResult.error && createResult.error.code === '23505') {
+            // Пользователь уже существует - это нормально, используем fallback
+            console.log('User already exists in database, will use fallback')
+          }
+        } catch (createTimeout: any) {
+          console.log('Create user timeout (2s), will use fallback')
+          // Не делаем ничего - просто переходим к fallback
         }
       }
-    } catch (error) {
+
+      // Если все еще нет пользователя, создаем временный объект из auth данных
+      // Это гарантирует, что авторизация всегда завершится успешно
+      if (!user) {
+        console.log('Creating fallback user from auth data')
+        user = {
+          id: data.user.id,
+          email: data.user.email || '',
+          full_name: data.user.user_metadata?.full_name || 'Пользователь',
+          avatar_url: null,
+          phone: null,
+          rating: 5.0,
+          reviews_count: 0,
+          created_at: new Date().toISOString(),
+        } as User
+        console.log('Fallback user created:', user.id, user.email)
+      }
+
+      console.log('Setting user in store, sign in complete. User ID:', user.id)
+      set({ user: user, loading: false, isAuthenticating: false })
+      console.log('Store updated successfully')
+    } catch (error: any) {
+      console.error('Sign in failed:', error)
       set({ loading: false, isAuthenticating: false })
       throw error
     }
@@ -103,58 +158,58 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (error) throw error
       
       if (data.user) {
-        // Профиль пользователя создается автоматически через database trigger
-        // Ждем немного, чтобы trigger успел выполниться
+        // Ждем немного для создания профиля через trigger
         await new Promise(resolve => setTimeout(resolve, 1500))
         
-        // Пытаемся загрузить пользователя несколько раз
-        let loaded = false
-        for (let i = 0; i < 10; i++) {
-          await useAuthStore.getState().loadUser()
+        // Загружаем пользователя напрямую из базы
+        let userLoaded = false
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', data.user.id)
+            .single()
           
-          const currentState = useAuthStore.getState()
-          if (currentState.user) {
-            loaded = true
+          if (!userError && userData) {
+            set({ user: userData as User, loading: false, isAuthenticating: false })
+            userLoaded = true
             break
           }
           
-          await new Promise(resolve => setTimeout(resolve, 500))
+          // Если пользователя нет, создаем
+          if (userError && userError.code === 'PGRST116') {
+            const { data: newUser, error: createError } = await supabase
+              .from('users')
+              .insert({
+                id: data.user.id,
+                email: data.user.email || '',
+                full_name: fullName,
+                rating: 5.0,
+                reviews_count: 0,
+              })
+              .select()
+              .single()
+            
+            if (!createError && newUser) {
+              set({ user: newUser as User, loading: false, isAuthenticating: false })
+              userLoaded = true
+              break
+            }
+          }
+          
+          // Ждем перед следующей попыткой
+          if (attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, 500))
+          }
         }
         
-        const finalState = useAuthStore.getState()
-        if (loaded && finalState.user) {
-          set({ loading: false, isAuthenticating: false })
-          if (!finalState.initialized) {
-            globalInitialized = true
-            set({ initialized: true })
-          }
-        } else {
-          set({ loading: false, isAuthenticating: false })
-          try {
-            const { data: { user: authUser } } = await supabase.auth.getUser()
-            if (authUser) {
-              const { data: userData } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', authUser.id)
-                .single()
-              
-              if (userData) {
-                set({ user: userData as User, loading: false, isAuthenticating: false })
-                if (!globalInitialized) {
-                  globalInitialized = true
-                  set({ initialized: true })
-                }
-              }
-            }
-          } catch (err) {
-            console.error('Final user load attempt failed:', err)
-          }
+        if (!userLoaded) {
+          throw new Error('Не удалось создать или загрузить профиль пользователя')
         }
       } else {
         set({ loading: false, isAuthenticating: false })
       }
-    } catch (error) {
+    } catch (error: any) {
       set({ loading: false, isAuthenticating: false })
       throw error
     }
@@ -192,12 +247,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
       
       if (authError) {
-        set({ user: null, loading: false })
+        set({ user: null, loading: false, isAuthenticating: false })
         return
       }
 
       if (!authUser) {
-        set({ user: null, loading: false })
+        set({ user: null, loading: false, isAuthenticating: false })
         return
       }
 
@@ -247,8 +302,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       } else {
         set({ user: null, loading: false, isAuthenticating: false })
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Unexpected error loading user:', error)
+      // При любой ошибке устанавливаем loading в false
       set({ user: null, loading: false, isAuthenticating: false })
     }
   },

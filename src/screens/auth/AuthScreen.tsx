@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,7 +18,16 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn, signUp } = useAuthStore();
+  const { signIn, signUp, user } = useAuthStore();
+
+  // Если пользователь авторизован, экран автоматически скроется
+  // так как App.tsx переключится на AppNavigator
+  useEffect(() => {
+    if (user) {
+      console.log('User authenticated, should navigate to app');
+      setLoading(false);
+    }
+  }, [user]);
 
   const handleSubmit = async () => {
     if (!email || !password) {
@@ -32,15 +41,30 @@ export default function AuthScreen() {
     }
 
     setLoading(true);
+    let timeoutId: NodeJS.Timeout | null = null;
+    
+    // Добавляем таймаут на случай зависания
+    timeoutId = setTimeout(() => {
+      setLoading(false);
+      Alert.alert('Ошибка', 'Превышено время ожидания. Проверьте подключение к интернету.');
+    }, 15000); // 15 секунд
+
     try {
+      console.log('Starting authentication...', isSignUp ? 'signUp' : 'signIn');
       if (isSignUp) {
         await signUp(email, password, fullName);
       } else {
         await signIn(email, password);
       }
+      if (timeoutId) clearTimeout(timeoutId);
+      console.log('Authentication successful');
+      // Сбрасываем loading - App.tsx автоматически переключится на AppNavigator
+      // когда user появится в store (через useEffect)
+      setLoading(false);
     } catch (error: any) {
+      if (timeoutId) clearTimeout(timeoutId);
+      console.error('Authentication error:', error);
       Alert.alert('Ошибка', error.message || 'Произошла ошибка');
-    } finally {
       setLoading(false);
     }
   };
